@@ -76,14 +76,20 @@ class GenerationMixin:
         return input_ids.new_ones(input_ids.shape)
 
     def _prepare_encoder_decoder_kwargs_for_generation(
-        self, input_ids: torch.LongTensor, model_kwargs
+        self,
+        input_ids: torch.LongTensor,
+        inputs_embeds: torch.Tensor = None,
+        model_kwargs
     ) -> Dict[str, Any]:
         # retrieve encoder hidden states
         encoder = self.get_encoder()
         encoder_kwargs = {
             argument: value for argument, value in model_kwargs.items() if not argument.startswith("decoder_")
         }
-        model_kwargs["encoder_outputs"]: ModelOutput = encoder(input_ids, return_dict=True, **encoder_kwargs)
+        if inputs_embeds is not None:
+            model_kwargs["encoder_outputs"]: ModelOutput = encoder(inputs_embeds=inputs_embeds, return_dict=True, **encoder_kwargs)
+        else:
+            model_kwargs["encoder_outputs"]: ModelOutput = encoder(input_ids, return_dict=True, **encoder_kwargs)
         return model_kwargs
 
     def _prepare_decoder_input_ids_for_generation(
@@ -306,6 +312,7 @@ class GenerationMixin:
     def generate(
         self,
         input_ids: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
         max_length: Optional[int] = None,
         min_length: Optional[int] = None,
         do_sample: Optional[bool] = None,
@@ -345,6 +352,8 @@ class GenerationMixin:
             input_ids (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
                 The sequence used as a prompt for the generation. If :obj:`None` the method initializes it as an empty
                 :obj:`torch.LongTensor` of shape :obj:`(1,)`.
+            inputs_embeds (:obj:`torch.Tensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
+                The sequence of embeddings that are fed to the encoder instead of input_ids.
             max_length (:obj:`int`, `optional`, defaults to 20):
                 The maximum length of the sequence to be generated.
             min_length (:obj:`int`, `optional`, defaults to 10):
@@ -488,10 +497,13 @@ class GenerationMixin:
             input_ids = self._prepare_input_ids_for_generation(bos_token_id)
 
         if model_kwargs.get("attention_mask", None) is None:
-            # init `attention_mask` depending on `pad_token_id`
-            model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
-                input_ids, pad_token_id, eos_token_id
-            )
+            if inputs_embeds is not None:
+                model_kwargs["attention_mask"] = torch.ones(inputs_embeds.shape[0], inputs_embeds.shape[1], dtype=torch.long, device=inputs_embeds.device)
+            else:
+                # init `attention_mask` depending on `pad_token_id`
+                model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
+                    input_ids, pad_token_id, eos_token_id
+                )
 
         # special case if pad_token_id is not defined
         if pad_token_id is None and eos_token_id is not None:
@@ -500,7 +512,7 @@ class GenerationMixin:
 
         if self.config.is_encoder_decoder:
             # add encoder_outputs to model_kwargs
-            model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(input_ids, model_kwargs)
+            model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(input_ids, inputs_embeds, model_kwargs)
 
             # set input_ids as decoder_input_ids
             input_ids = self._prepare_decoder_input_ids_for_generation(
