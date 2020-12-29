@@ -78,8 +78,8 @@ class GenerationMixin:
     def _prepare_encoder_decoder_kwargs_for_generation(
         self,
         input_ids: torch.LongTensor,
+        model_kwargs,
         inputs_embeds: torch.Tensor = None,
-        model_kwargs
     ) -> Dict[str, Any]:
         # retrieve encoder hidden states
         encoder = self.get_encoder()
@@ -512,7 +512,7 @@ class GenerationMixin:
 
         if self.config.is_encoder_decoder:
             # add encoder_outputs to model_kwargs
-            model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(input_ids, inputs_embeds, model_kwargs)
+            model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(input_ids, model_kwargs, inputs_embeds)
 
             # set input_ids as decoder_input_ids
             input_ids = self._prepare_decoder_input_ids_for_generation(
